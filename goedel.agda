@@ -38,12 +38,12 @@ infixr 5 ƛ_
 infixl 7 _·_
 
 data _⊢_ (Γ : Ctx) : Ty → Set where
-  `_  : ∀ {A}   → Γ ∋ A                      → Γ ⊢ A
-  ƛ_  : ∀ {A B} → Γ ▷ A ⊢ B                  → Γ ⊢ A ⇒ B
-  _·_ : ∀ {A B} → Γ ⊢ A ⇒ B      → Γ ⊢ A     → Γ ⊢ B
-  `Z  :                                        Γ ⊢ `ℕ
-  `S  :           Γ ⊢ `ℕ                     → Γ ⊢ `ℕ 
-  rec : ∀ {A}   → Γ ⊢ `ℕ → Γ ⊢ A → Γ ▷ A ⊢ A → Γ ⊢ A
+  `_  : ∀ {A}   → Γ ∋ A                           → Γ ⊢ A
+  ƛ_  : ∀ {A B} → Γ ▷ A ⊢ B                       → Γ ⊢ A ⇒ B
+  _·_ : ∀ {A B} → Γ ⊢ A ⇒ B      → Γ ⊢ A          → Γ ⊢ B
+  `Z  :                                             Γ ⊢ `ℕ
+  `S  :           Γ ⊢ `ℕ                          → Γ ⊢ `ℕ 
+  rec : ∀ {A}   → Γ ⊢ `ℕ → Γ ⊢ A → Γ ▷ `ℕ ▷ A ⊢ A → Γ ⊢ A
 
 Ren : Ctx → Ctx → Set
 Ren Γ Δ = ∀ {A} → Γ ∋ A → Δ ∋ A
@@ -58,7 +58,7 @@ ren ρ (ƛ M)       = ƛ ren (lift ρ) M
 ren ρ (M · N)     = (ren ρ M) · (ren ρ N)
 ren ρ `Z          = `Z
 ren ρ (`S M)      = `S (ren ρ M)
-ren ρ (rec L M N) = rec (ren ρ L) (ren ρ M) (ren (lift ρ) N)
+ren ρ (rec L M N) = rec (ren ρ L) (ren ρ M) (ren (lift (lift ρ)) N)
 
 weaken : ∀ {Γ A B} → Γ ⊢ A → Γ ▷ B ⊢ A
 weaken = ren S
@@ -76,7 +76,7 @@ sub σ (ƛ M)       = ƛ sub (lifts σ) M
 sub σ (M · N)     = (sub σ M) · (sub σ N)
 sub σ `Z          = `Z
 sub σ (`S M)      = `S (sub σ M)
-sub σ (rec L M N) = rec (sub σ L) (sub σ M) (sub (lifts σ) N)
+sub σ (rec L M N) = rec (sub σ L) (sub σ M) (sub (lifts (lifts σ)) N)
 
 infixr 6 _•_
 
@@ -114,7 +114,7 @@ data _—→_ : ∀ {Γ A} → (Γ ⊢ A) → (Γ ⊢ A) → Set where
 
   β-· : ∀ {Γ A B} {M : Γ ▷ A ⊢ B} {N}
     → Val N
-      --------------------
+      ---------------------
     → (ƛ M) · N —→ M [ N ]
 
   ξ-`S : ∀ {Γ} {M M' : Γ ⊢ `ℕ}
@@ -133,12 +133,12 @@ data _—→_ : ∀ {Γ A} → (Γ ⊢ A) → (Γ ⊢ A) → Set where
 
   β-recₛ : ∀ {Γ A} {L} {M : Γ ⊢ A} {N}
     → Val L
-      ----------------------------------
-    → rec (`S L) M N —→ N [ rec L M N ]
+      ------------------------------------------------
+    → rec (`S L) M N —→ sub ((rec L M N) • L • ids) N
 
-ℕ-elim : ∀ {A : Set} → ℕ → A → (A → A) → A
+ℕ-elim : ∀ {A : Set} → ℕ → A → (ℕ → A → A) → A
 ℕ-elim zero    z k = z
-ℕ-elim (suc n) z k = k (ℕ-elim n z k)
+ℕ-elim (suc n) z k = k n (ℕ-elim n z k)
 
 ⟦_⟧ᵀ : Ty → Set
 ⟦ `ℕ    ⟧ᵀ = ℕ
@@ -158,7 +158,7 @@ data _—→_ : ∀ {Γ A} → (Γ ⊢ A) → (Γ ⊢ A) → Set where
 ⟦ M · N     ⟧ᴱ η = (⟦ M ⟧ᴱ η) (⟦ N ⟧ᴱ η)
 ⟦ `Z        ⟧ᴱ η = zero
 ⟦ `S M      ⟧ᴱ η = suc (⟦ M ⟧ᴱ η)
-⟦ rec L M N ⟧ᴱ η = ℕ-elim (⟦ L ⟧ᴱ η) (⟦ M ⟧ᴱ η) λ z → ⟦ N ⟧ᴱ (η , z)
+⟦ rec L M N ⟧ᴱ η = ℕ-elim (⟦ L ⟧ᴱ η) (⟦ M ⟧ᴱ η) λ n z → ⟦ N ⟧ᴱ ((η , n) , z)
 
 ⟦_⟧ : ∀ {A} → (M : ∅ ⊢ A) → ⟦ A ⟧ᵀ
 ⟦ M ⟧ = ⟦ M ⟧ᴱ tt
@@ -177,8 +177,9 @@ ren-Ren† η γ ρ ρ† (M · N) = Eq.cong₂ (λ x y → x y) (ren-Ren† η 
 ren-Ren† η γ ρ ρ† `Z = refl
 ren-Ren† η γ ρ ρ† (`S M) = Eq.cong suc (ren-Ren† η γ ρ ρ† M)
 ren-Ren† η γ ρ ρ† (rec L M N) = Eq.trans
-  (Eq.cong₂ (λ x y → ℕ-elim x y λ v → ⟦ N ⟧ᴱ (η , v)) (ren-Ren† η γ ρ ρ† L) (ren-Ren† η γ ρ ρ† M))
-  (Eq.cong (ℕ-elim (⟦ ren ρ L ⟧ᴱ γ) (⟦ ren ρ M ⟧ᴱ γ)) (extensionality λ x → ren-Ren† (η , x) (γ , x) (lift ρ) (lift-Ren† η γ ρ ρ† x) N))
+  (Eq.cong₂ (λ x y → ℕ-elim x y λ v k → ⟦ N ⟧ᴱ ((η , v) , k) ) (ren-Ren† η γ ρ ρ† L) (ren-Ren† η γ ρ ρ† M))
+  (Eq.cong (ℕ-elim (⟦ ren ρ L ⟧ᴱ γ) (⟦ ren ρ M ⟧ᴱ γ)) (extensionality λ v → extensionality λ k →
+    ren-Ren† ((η , v) , k) ((γ , v) , k) (lift (lift ρ)) (lift-Ren† (η , v) (γ , v) (lift ρ) (lift-Ren† η γ ρ ρ† v) k) N))
 
 Sub† : ∀ {Γ Δ : Ctx} (η : ⟦ Γ ⟧ᴳ) (γ : ⟦ Δ ⟧ᴳ) (σ : Sub Γ Δ) → Set  
 Sub† {Γ} {Δ} η γ σ = ∀ {A} (x : Γ ∋ A) → ⟦ x ⟧ᴸ η ≡ ⟦ σ x ⟧ᴱ γ
@@ -187,15 +188,16 @@ lifts-Sub† : ∀ {Γ Δ} (η : ⟦ Γ ⟧ᴳ) (γ : ⟦ Δ ⟧ᴳ) (σ : Sub �
 lifts-Sub† η γ σ σ† v Z     = refl
 lifts-Sub† η γ σ σ† v (S x) = Eq.trans (σ† x) (ren-Ren† γ (γ , v) S (λ _ → refl) (σ x))
 
-sub-den : ∀ {Γ Δ} (η : ⟦ Γ ⟧ᴳ) (γ : ⟦ Δ ⟧ᴳ) (σ : Sub Γ Δ) → Sub† η γ σ → ∀ {A} (M : Γ ⊢ A) → ⟦ M ⟧ᴱ η ≡ ⟦ sub σ M ⟧ᴱ γ
-sub-den η γ σ σ† (` x)       = σ† x
-sub-den η γ σ σ† (ƛ M)       = extensionality λ x → sub-den (η , x) (γ , x) (lifts σ) (lifts-Sub† η γ σ σ† x) M
-sub-den η γ σ σ† (M · N)     = Eq.cong₂ (λ x y → x y) (sub-den η γ σ σ† M) (sub-den η γ σ σ† N)
-sub-den η γ σ σ† `Z          = refl
-sub-den η γ σ σ† (`S M)      = Eq.cong suc (sub-den η γ σ σ† M)
-sub-den η γ σ σ† (rec L M N) = Eq.trans
-  (Eq.cong₂ (λ x y → ℕ-elim x y λ v → ⟦ N ⟧ᴱ (η , v)) (sub-den η γ σ σ† L) (sub-den η γ σ σ† M))
-  (Eq.cong (ℕ-elim (⟦ sub σ L ⟧ᴱ γ) (⟦ sub σ M ⟧ᴱ γ)) (extensionality λ x → sub-den (η , x) (γ , x) (lifts σ) (lifts-Sub† η γ σ σ† x) N))
+sub-Sub† : ∀ {Γ Δ} (η : ⟦ Γ ⟧ᴳ) (γ : ⟦ Δ ⟧ᴳ) (σ : Sub Γ Δ) → Sub† η γ σ → ∀ {A} (M : Γ ⊢ A) → ⟦ M ⟧ᴱ η ≡ ⟦ sub σ M ⟧ᴱ γ
+sub-Sub† η γ σ σ† (` x)       = σ† x
+sub-Sub† η γ σ σ† (ƛ M)       = extensionality λ x → sub-Sub† (η , x) (γ , x) (lifts σ) (lifts-Sub† η γ σ σ† x) M
+sub-Sub† η γ σ σ† (M · N)     = Eq.cong₂ (λ x y → x y) (sub-Sub† η γ σ σ† M) (sub-Sub† η γ σ σ† N)
+sub-Sub† η γ σ σ† `Z          = refl
+sub-Sub† η γ σ σ† (`S M)      = Eq.cong suc (sub-Sub† η γ σ σ† M)
+sub-Sub† η γ σ σ† (rec L M N) = Eq.trans
+  (Eq.cong₂ (λ x y → ℕ-elim x y λ v k → ⟦ N ⟧ᴱ ((η , v), k) ) (sub-Sub† η γ σ σ† L) (sub-Sub† η γ σ σ† M))
+  (Eq.cong (ℕ-elim (⟦ sub σ L ⟧ᴱ γ) (⟦ sub σ M ⟧ᴱ γ)) (extensionality λ v → extensionality λ k →
+    sub-Sub† ((η , v) , k) ((γ , v) , k) (lifts (lifts σ)) (lifts-Sub† (η , v) (γ , v) (lifts σ) (lifts-Sub† η γ σ σ† v) k) N))
 
 ids-Sub† : ∀ {Γ} (η : ⟦ Γ ⟧ᴳ) → Sub† η η ids
 ids-Sub† η x = refl
@@ -204,17 +206,18 @@ cons-Sub† : ∀ {Γ Δ} (η : ⟦ Γ ⟧ᴳ) (γ : ⟦ Δ ⟧ᴳ) (σ : Sub Γ
 cons-Sub† η γ σ σ† M Z     = refl
 cons-Sub† η γ σ σ† M (S x) = σ† x
 
-sub-zero-den : ∀ {Γ A B} (η : ⟦ Γ ⟧ᴳ) (M : Γ ▷ A ⊢ B) (N : Γ ⊢ A) → ⟦ M ⟧ᴱ (η , ⟦ N ⟧ᴱ η) ≡ ⟦ M [ N ] ⟧ᴱ η
-sub-zero-den η M N = sub-den (η , ⟦ N ⟧ᴱ η) η (sub-zero N) (cons-Sub† η η ids (ids-Sub† η) N) M 
+sub-zero-Sub† : ∀ {Γ A B} (η : ⟦ Γ ⟧ᴳ) (M : Γ ▷ A ⊢ B) (N : Γ ⊢ A) → ⟦ M ⟧ᴱ (η , ⟦ N ⟧ᴱ η) ≡ ⟦ M [ N ] ⟧ᴱ η
+sub-zero-Sub† η M N = sub-Sub† (η , ⟦ N ⟧ᴱ η) η (sub-zero N) (cons-Sub† η η ids (ids-Sub† η) N) M 
 
 —→-⟦⟧ᴱ : ∀ {Γ A} {M N : Γ ⊢ A} → (η : ⟦ Γ ⟧ᴳ) → M —→ N → ⟦ M ⟧ᴱ η ≡ ⟦ N ⟧ᴱ η
 —→-⟦⟧ᴱ {M = M · N}          η (ξ-·ₗ M—→N)  = Eq.cong (λ x → x (⟦ N ⟧ᴱ η)) (—→-⟦⟧ᴱ η M—→N)
 —→-⟦⟧ᴱ {M = (ƛ M) · N}      η (ξ-·ᵣ M—→N)  = Eq.cong (λ x → ⟦ M ⟧ᴱ (η , x)) (—→-⟦⟧ᴱ η M—→N)
-—→-⟦⟧ᴱ {M = (ƛ M) · N}      η (β-· V)      = sub-zero-den η M N
+—→-⟦⟧ᴱ {M = (ƛ M) · N}      η (β-· V)      = sub-zero-Sub† η M N
 —→-⟦⟧ᴱ                      η (ξ-`S M—→N)  = Eq.cong suc (—→-⟦⟧ᴱ η M—→N)
-—→-⟦⟧ᴱ {M = rec L M N}      η (ξ-rec M—→N) = Eq.cong (λ x → ℕ-elim x (⟦ M ⟧ᴱ η) λ v → ⟦ N ⟧ᴱ (η , v)) (—→-⟦⟧ᴱ η M—→N)
+—→-⟦⟧ᴱ {M = rec L M N}      η (ξ-rec M—→N) = Eq.cong (λ x → ℕ-elim x (⟦ M ⟧ᴱ η) λ v k → ⟦ N ⟧ᴱ ((η , v) , k)) (—→-⟦⟧ᴱ η M—→N)
 —→-⟦⟧ᴱ                      η β-rec₀       = refl
-—→-⟦⟧ᴱ {M = rec (`S L) M N} η (β-recₛ V)   = sub-zero-den η N (rec L M N)
+—→-⟦⟧ᴱ {M = rec (`S L) M N} η (β-recₛ V)   = sub-Sub† ((η , ⟦ L ⟧ᴱ η) , ⟦ rec L M N ⟧ᴱ η) η (rec L M N • sub-zero L)
+  (cons-Sub† (η , ⟦ L ⟧ᴱ η) η (sub-zero L) (cons-Sub† η η ids (ids-Sub† η) L) (rec L M N)) N
 
 -- soundness
 —→-⟦⟧ : ∀ {A} {M N : ∅ ⊢ A} → M —→ N → ⟦ M ⟧ ≡ ⟦ N ⟧
@@ -266,6 +269,6 @@ postulate
 eval : ∀ {A} → (M : ∅ ⊢ A) → Halts M
 eval M = ℋ-Halts (Eq.subst ℋ (Eq.sym sub-id) (halts {σ = ids} (λ ()) M))
 
-eval≈den : ∀ {A} → (M : ∅ ⊢ A) → ∃[ N ] (M —↠ N) × Val N × ⟦ M ⟧ ≡ ⟦ N ⟧
-eval≈den M with eval M
+eval≈denote : ∀ {A} → (M : ∅ ⊢ A) → ∃[ N ] (M —↠ N) × Val N × ⟦ M ⟧ ≡ ⟦ N ⟧
+eval≈denote M with eval M
 ... | N , M—↠N , V = N , M—↠N , V , —↠-⟦⟧ M—↠N
