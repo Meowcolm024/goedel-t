@@ -243,6 +243,7 @@ progress (rec L M N) with progress L
 ... | inj₂ (V-`S V)       = inj₁ (_ , β-recₛ V)
 
 infix  2 _—↠_
+
 _—↠_ : ∀ {Γ A} → (M N : Γ ⊢ A) → Set
 _—↠_ M N = Star _—→_ M N
 
@@ -250,7 +251,6 @@ _—↠_ M N = Star _—→_ M N
 —↠-⟦⟧ ε               = refl
 —↠-⟦⟧ (M—→M' ◅ M'—↠N) = Eq.trans (—→-⟦⟧ M—→M') (—↠-⟦⟧ M'—↠N)
 
--- unfortunately we still need a normalization proof
 Halts : ∀ {A} → (M : ∅ ⊢ A) → Set
 Halts M = ∃[ N ] (M —↠ N) × Val N
 
@@ -265,10 +265,10 @@ Halts M = ∃[ N ] (M —↠ N) × Val N
 ⊨_ : ∀ {Γ} (σ : Sub Γ ∅) → Set
 ⊨_ {Γ} σ = ∀ {A} (x : Γ ∋ A) → ℋ (σ x)
 
-postulate
-  sub-id : ∀ {Γ A} {M : Γ ⊢ A} → M ≡ sub ids M
-  sub-lift-sub : ∀ {Γ Δ} {σ : Sub Γ Δ} {A B} (M : Γ ▷ B ⊢ A) (N : Δ ⊢ B)
-    → (sub (lifts σ) M) [ N ] ≡ sub (N • σ) M
+infixr 5 _⨟_
+
+_⨟_ : ∀{Γ Δ Σ} → Sub Γ Δ → Sub Δ Σ → Sub Γ Σ
+σ ⨟ τ = sub τ ∘ σ
 
 V—↛ : ∀ {A} {M N : ∅ ⊢ A} → Val M → ¬ (M —→ N)
 V—↛ (V-`S V) (ξ-`S M—→N) = V—↛ V M—→N
@@ -322,22 +322,43 @@ rec-cong (L—→L₁ ◅ L₁—↠L') = ξ-rec L—→L₁ ◅ rec-cong L₁�
 ·ᵣ-cong ε               = ε
 ·ᵣ-cong (N—→N₁ ◅ N—↠N') = ξ-·ᵣ N—→N₁ ◅ ·ᵣ-cong N—↠N'
 
+-- the tedious substitution lemmas
+postulate
+  sub-id : ∀ {Γ A} {M : Γ ⊢ A} → M ≡ sub ids M
+  sub-lift-sub : ∀ {Γ Δ} {σ : Sub Γ Δ} {A B} (M : Γ ▷ B ⊢ A) (N : Δ ⊢ B)
+    → (sub (lifts σ) M) [ N ] ≡ sub (N • σ) M
+  -- the proof should be similar to plfa's `subst-zero-exts-cons`
+  sub-cons2-lifts-cons2 : ∀ {Γ Δ} {σ : Sub Γ Δ} {A B C} (L : Δ ⊢ A) (M : Δ ⊢ B) (N : Γ ▷ B ▷ A ⊢ C)
+    → sub (L • M • ids) (sub (lifts (lifts σ)) N) ≡ sub (L • M • σ) N
+
+rec-halts : ∀ {A Γ} {σ : Sub Γ ∅} (L : ∅ ⊢ `ℕ) (M : Γ ⊢ A) (N : Γ ▷ `ℕ ▷ A ⊢ A)
+  → Val L
+  → ℋ (sub σ M)
+  → (∀ {R S} → ℋ R → ℋ S → ℋ (sub (R • S • σ) N))
+    ----------------------------------------------
+  → ℋ (rec L (sub σ M) (sub (lifts (lifts σ)) N))
+rec-halts `Z M N V-`Z HM η = —↠-ℋ' (β-rec₀ ◅ ε) HM
+rec-halts {σ = σ} (`S L) M N (V-`S VL) HM η = —↠-ℋ'
+  (Eq.subst (rec (`S L) (sub σ M) (sub (lifts (lifts σ)) N) —→_) lem (β-recₛ VL)  ◅ ε)
+  (η (rec-halts L M N VL HM η) (L , ε , VL))
+  where
+    lem = sub-cons2-lifts-cons2 (rec L (sub σ M) (sub (lifts (lifts σ)) N)) L N
+      
 halts : ∀ {Γ A} {σ : Sub Γ ∅} → ⊨ σ → (M : Γ ⊢ A) → ℋ (sub σ M)
 halts GG (` x) = GG x
 halts {A = A ⇒ B} {σ} GG (ƛ M) = (_ , ε , V-ƛ _) , η
   where
     η : {N : ∅ ⊢ A} → ℋ N → ℋ (sub σ (ƛ M) · N)
-    η {N} HN with ℋ-Halts HN
-    ... | (N' , N—↠N' , VN') = —↠-ℋ'
+    η {N} HN with (N' , N—↠N' , VN') ← ℋ-Halts HN = —↠-ℋ'
       (·ᵣ-cong N—↠N' ◅◅ Eq.subst ((sub σ (ƛ M) · N') —→_) (sub-lift-sub M N') (β-· VN') ◅ ε)
       (halts {σ = N' • σ} (λ { Z → —↠-ℋ N—↠N' HN ; (S x) → GG x }) M)
-halts GG (M · N) with halts GG M
-... | _ , η = η (halts GG N)
+halts GG (M · N) with _ , η ← halts GG M = η (halts GG N)
 halts GG `Z = `Z , ε , V-`Z
 halts GG (`S M) with halts GG M
 ... | N , M[σ]—↠N , VN = `S N , `S-cong M[σ]—↠N , V-`S VN
-halts {σ = σ} GG (rec L M N) with halts GG L
-... | L' , L[σ]—↠L' , VL' = {!!}
+halts {σ = σ} GG (rec L M N) with L' , L[σ]—↠L' , VL' ← halts GG L =
+  —↠-ℋ' (rec-cong L[σ]—↠L') (rec-halts L' M N VL' (halts GG M)
+    λ HR HS → halts (λ { Z → HR ; (S Z) → HS ; (S (S x)) → GG x }) N)
 
 eval : ∀ {A} → (M : ∅ ⊢ A) → Halts M
 eval M = ℋ-Halts (Eq.subst ℋ (Eq.sym sub-id) (halts {σ = ids} (λ ()) M))
