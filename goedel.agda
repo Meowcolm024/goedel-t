@@ -4,6 +4,9 @@ open import Data.Nat using (ℕ; zero; suc)
 open import Data.Product using (_×_; _,_; ∃-syntax)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Unit using (⊤; tt)
+open import Data.Empty using (⊥; ⊥-elim)
+open import Function using (id; _∘_)
+open import Relation.Nullary using (¬_; contradiction)
 import Relation.Binary.Construct.Closure.ReflexiveTransitive as RT
 open RT using (Star; ε; _◅_; _◅◅_)
 import Relation.Binary.PropositionalEquality as Eq
@@ -239,6 +242,7 @@ progress (rec L M N) with progress L
 ... | inj₂ V-`Z           = inj₁ (M , β-rec₀)
 ... | inj₂ (V-`S V)       = inj₁ (_ , β-recₛ V)
 
+infix  2 _—↠_
 _—↠_ : ∀ {Γ A} → (M N : Γ ⊢ A) → Set
 _—↠_ M N = Star _—→_ M N
 
@@ -256,15 +260,84 @@ Halts M = ∃[ N ] (M —↠ N) × Val N
 
 ℋ-Halts : ∀ {A} {M : ∅ ⊢ A} → ℋ M → Halts M
 ℋ-Halts {A = `ℕ}    H       = H
-ℋ-Halts {A = A ⇒ B} (H , k) = H
+ℋ-Halts {A = A ⇒ B} (H , _) = H
 
 ⊨_ : ∀ {Γ} (σ : Sub Γ ∅) → Set
 ⊨_ {Γ} σ = ∀ {A} (x : Γ ∋ A) → ℋ (σ x)
 
 postulate
   sub-id : ∀ {Γ A} {M : Γ ⊢ A} → M ≡ sub ids M
-  -- TODO
-  halts : ∀ {Γ A} {σ : Sub Γ ∅} → ⊨ σ → (M : Γ ⊢ A) → ℋ (sub σ M)
+  sub-lift-sub : ∀ {Γ Δ} {σ : Sub Γ Δ} {A B} (M : Γ ▷ B ⊢ A) (N : Δ ⊢ B)
+    → (sub (lifts σ) M) [ N ] ≡ sub (N • σ) M
+
+V—↛ : ∀ {A} {M N : ∅ ⊢ A} → Val M → ¬ (M —→ N)
+V—↛ (V-`S V) (ξ-`S M—→N) = V—↛ V M—→N
+
+—→-determ : ∀ {A} {M N N' : ∅ ⊢ A} → M —→ N → M —→ N' → N ≡ N'
+—→-determ (ξ-·ₗ M—→N)  (ξ-·ₗ M—→N')  = Eq.cong (_· _) (—→-determ M—→N M—→N')
+—→-determ (ξ-·ᵣ M—→N)  (ξ-·ᵣ M—→N')  = Eq.cong (_ ·_) (—→-determ M—→N M—→N')
+—→-determ (ξ-·ᵣ M—→N)  (β-· VN)      = contradiction M—→N (V—↛ VN)
+—→-determ (β-· VN)     (ξ-·ᵣ M—→N')  = contradiction M—→N' (V—↛ VN)
+—→-determ (β-· VN)     (β-· VN')     = refl
+—→-determ (ξ-`S M—→N)  (ξ-`S M—→N')  = Eq.cong `S (—→-determ M—→N M—→N')
+—→-determ (ξ-rec M—→N) (ξ-rec M—→N') = Eq.cong (λ x → rec x _ _) (—→-determ M—→N M—→N')
+—→-determ (ξ-rec M—→N) (β-recₛ VL)   = contradiction M—→N (V—↛ (V-`S VL))
+—→-determ β-rec₀       β-rec₀        = refl
+—→-determ (β-recₛ VL)  (ξ-rec M—→N') = contradiction M—→N' (V—↛ (V-`S VL))
+—→-determ (β-recₛ VL)  (β-recₛ VL')  = refl
+
+—→-Halts : ∀ {A} {M N : ∅ ⊢ A} → M —→ N → Halts M → Halts N
+—→-Halts M—→N (M' , ε , VM') = contradiction M—→N (V—↛ VM')
+—→-Halts M—→N (M' , M—→N' ◅ M—↠M' , VM') rewrite —→-determ M—→N M—→N' = M' , M—↠M' , VM'
+
+—→-Halts' : ∀ {A} {M N : ∅ ⊢ A} → M —→ N → Halts N → Halts M
+—→-Halts' M—→N (M' , ε , VM')             = M' , M—→N ◅ ε , VM'
+—→-Halts' M—→N (M' , N—→N' ◅ N—↠M' , VM') = M' , M—→N ◅ N—→N' ◅ N—↠M' , VM'
+
+—→-ℋ : ∀ {A} {M N : ∅ ⊢ A} → M —→ N → ℋ M → ℋ N
+—→-ℋ {`ℕ}    M—→N H       = —→-Halts M—→N H
+—→-ℋ {A ⇒ B} M—→N (H , η) = —→-Halts M—→N H , λ H' → —→-ℋ (ξ-·ₗ M—→N) (η H')
+
+—→-ℋ' : ∀ {A} {M N : ∅ ⊢ A} → M —→ N → ℋ N → ℋ M
+—→-ℋ' {`ℕ}    M—→N H       = —→-Halts' M—→N H
+—→-ℋ' {A ⇒ B} M—→N (H , η) = —→-Halts' M—→N H , λ H' → —→-ℋ' (ξ-·ₗ M—→N) (η H')
+
+—↠-ℋ : ∀ {A} {M N : ∅ ⊢ A} → M —↠ N → ℋ M → ℋ N
+—↠-ℋ ε               H = H
+—↠-ℋ (M—→M' ◅ M'—↠N) H = —↠-ℋ M'—↠N (—→-ℋ M—→M' H)
+
+—↠-ℋ' : ∀ {A} {M N : ∅ ⊢ A} → M —↠ N → ℋ N → ℋ M
+—↠-ℋ' ε               H = H
+—↠-ℋ' (M—→M' ◅ M'—↠N) H = —→-ℋ' M—→M' (—↠-ℋ' M'—↠N H)
+
+`S-cong : ∀ {M N : ∅ ⊢ `ℕ} → M —↠ N → `S M —↠ `S N
+`S-cong ε               = ε
+`S-cong (M—→M' ◅ M'—↠N) = ξ-`S M—→M' ◅ `S-cong M'—↠N
+
+rec-cong : ∀ {A} {L L' M} {N : ∅ ▷ `ℕ ▷ A ⊢ A} → L —↠ L' → rec L M N —↠ rec L' M N
+rec-cong ε                = ε
+rec-cong (L—→L₁ ◅ L₁—↠L') = ξ-rec L—→L₁ ◅ rec-cong L₁—↠L'
+
+·ᵣ-cong : ∀ {A B} {M : ∅ ▷ A ⊢ B} {N N' : ∅ ⊢ A} → N —↠ N' → (ƛ M) · N —↠ (ƛ M) · N'
+·ᵣ-cong ε               = ε
+·ᵣ-cong (N—→N₁ ◅ N—↠N') = ξ-·ᵣ N—→N₁ ◅ ·ᵣ-cong N—↠N'
+
+halts : ∀ {Γ A} {σ : Sub Γ ∅} → ⊨ σ → (M : Γ ⊢ A) → ℋ (sub σ M)
+halts GG (` x) = GG x
+halts {A = A ⇒ B} {σ} GG (ƛ M) = (_ , ε , V-ƛ _) , η
+  where
+    η : {N : ∅ ⊢ A} → ℋ N → ℋ (sub σ (ƛ M) · N)
+    η {N} HN with ℋ-Halts HN
+    ... | (N' , N—↠N' , VN') = —↠-ℋ'
+      (·ᵣ-cong N—↠N' ◅◅ Eq.subst ((sub σ (ƛ M) · N') —→_) (sub-lift-sub M N') (β-· VN') ◅ ε)
+      (halts {σ = N' • σ} (λ { Z → —↠-ℋ N—↠N' HN ; (S x) → GG x }) M)
+halts GG (M · N) with halts GG M
+... | _ , η = η (halts GG N)
+halts GG `Z = `Z , ε , V-`Z
+halts GG (`S M) with halts GG M
+... | N , M[σ]—↠N , VN = `S N , `S-cong M[σ]—↠N , V-`S VN
+halts {σ = σ} GG (rec L M N) with halts GG L
+... | L' , L[σ]—↠L' , VL' = {!!}
 
 eval : ∀ {A} → (M : ∅ ⊢ A) → Halts M
 eval M = ℋ-Halts (Eq.subst ℋ (Eq.sym sub-id) (halts {σ = ids} (λ ()) M))
