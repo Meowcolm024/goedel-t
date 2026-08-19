@@ -1,7 +1,7 @@
 module goedel where
 
 open import Data.Nat using (ℕ; zero; suc)
-open import Data.Product using (_×_; _,_; ∃-syntax)
+open import Data.Product using (_×_; _,_; ∃-syntax; ∃)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Unit using (⊤; tt)
 open import Data.Empty using (⊥; ⊥-elim)
@@ -366,3 +366,20 @@ eval M = ℋ-Halts (Eq.subst ℋ (Eq.sym sub-id) (halts {σ = ids} (λ ()) M))
 eval≈denote : ∀ {A} → (M : ∅ ⊢ A) → ∃[ N ] (M —↠ N) × Val N × ⟦ M ⟧ ≡ ⟦ N ⟧
 eval≈denote M with eval M
 ... | N , M—↠N , V = N , M—↠N , V , —↠-⟦⟧ M—↠N
+
+numeral : ℕ → ∅ ⊢ `ℕ
+numeral zero    = `Z
+numeral (suc n) = `S (numeral n)
+
+⟦numeral⟧ : (n : ℕ) → ⟦ numeral n ⟧ ≡ n
+⟦numeral⟧ zero    = refl
+⟦numeral⟧ (suc n) = Eq.cong suc (⟦numeral⟧ n)
+
+canonical-numeral : ∀ {N : ∅ ⊢ `ℕ} → Val N → ∀ {n} → ⟦ N ⟧ ≡ n → N ≡ numeral n
+canonical-numeral V-`Z      {n = zero}  refl = refl
+canonical-numeral (V-`S VN) {n = suc n} refl = Eq.cong `S (canonical-numeral VN refl)
+
+adequacy-`ℕ : (M : ∅ ⊢ `ℕ) → (n : ℕ) → ⟦ M ⟧ ≡ n → M —↠ numeral n
+adequacy-`ℕ M n ⟦M⟧≡n with eval≈denote M
+... | N , M—↠N , VN , ⟦M⟧≡⟦N⟧ =
+  Eq.subst (M —↠_) (canonical-numeral VN (Eq.trans (Eq.sym ⟦M⟧≡⟦N⟧) ⟦M⟧≡n)) M—↠N
